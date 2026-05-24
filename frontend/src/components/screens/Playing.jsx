@@ -1,10 +1,17 @@
 import { useEffect, useCallback, useRef } from 'react';
 import CosmicBackground from '../ui/CosmicBackground.jsx';
 import TimerPackages    from '../ui/TimerPackages.jsx';
+import PowerUpBar       from '../ui/PowerUpBar.jsx';
+import PowerUpShop      from '../ui/PowerUpShop.jsx';
 import Toast            from '../ui/Toast.jsx';
 import { FRUITS, drawFruitOnCtx } from '../../game/fruits.js';
 
-const W = 320;
+const SESSION_LABEL = {
+  pending:   { dot: '#ffb400', text: 'Confirming…' },
+  confirmed: { dot: '#2ecc71', text: 'Session active' },
+  failed:    { dot: '#ff4646', text: 'Session failed' },
+  idle:      null,
+};
 
 function fmt(s) {
   return [Math.floor(s / 60), s % 60]
@@ -15,14 +22,33 @@ function fmt(s) {
 export default function Playing({
   canvasRef,
   nextIdx,
+  sessionStatus,
   score,
   personalBest,
   remaining,
+  containerWidth,
+  // time packages
   packages,
   onPurchase,
   purchaseLoading,
   selectedToken,
   onSelectToken,
+  balances,
+  // power-ups
+  totalBombs,
+  totalExpands,
+  onUseBomb,
+  onUseExpand,
+  onBuyBombs,
+  onBuyExpands,
+  powerUpLoading,
+  shop,
+  onCloseShop,
+  powerUpPackages,
+  powerUpToken,
+  onSelectPowerUpToken,
+  onPurchasePowerUp,
+  // game
   toast,
   movePointer,
   dropFruit,
@@ -36,7 +62,6 @@ export default function Playing({
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, 56, 56);
-    // dark bg
     ctx.fillStyle = '#050009';
     ctx.fillRect(0, 0, 56, 56);
     const r = Math.min(FRUITS[nextIdx].r, 20);
@@ -45,10 +70,10 @@ export default function Playing({
 
   const getX = useCallback((e) => {
     const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return W / 2;
+    if (!rect) return (containerWidth ?? 320) / 2;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     return clientX - rect.left;
-  }, [canvasRef]);
+  }, [canvasRef, containerWidth]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -82,6 +107,7 @@ export default function Playing({
   }, [canvasRef, gameOver, movePointer, dropFruit, getX]);
 
   const urgent = remaining <= 10;
+  const sessionInfo = SESSION_LABEL[sessionStatus] ?? null;
 
   return (
     <div style={{ position: 'absolute', inset: 0, background: '#0a0015' }}>
@@ -94,6 +120,7 @@ export default function Playing({
           display: 'flex', flexDirection: 'column',
           padding: '12px 16px 14px', boxSizing: 'border-box',
         }}>
+
           {/* Top HUD */}
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -107,10 +134,7 @@ export default function Playing({
               border: `1px solid ${urgent ? 'rgba(255,59,59,0.5)' : 'rgba(255,255,255,0.1)'}`,
               animation: urgent ? 'nukko-pulse-bg 0.8s ease-in-out infinite' : 'none',
             }}>
-              <div style={{
-                width: 6, height: 6, borderRadius: 99,
-                background: urgent ? '#ff3b3b' : '#00d4ff',
-              }} />
+              <div style={{ width: 6, height: 6, borderRadius: 99, background: urgent ? '#ff3b3b' : '#00d4ff' }} />
               <div style={{
                 fontFamily: '"Space Mono", monospace', fontWeight: 700, fontSize: 22,
                 color: urgent ? '#ff3b3b' : '#fff', letterSpacing: '-0.02em',
@@ -122,10 +146,7 @@ export default function Playing({
 
             {/* Score + next preview */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {/* Next planet */}
-              <div style={{
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-              }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                 <div style={{
                   fontFamily: '"Nunito", system-ui', fontSize: 9,
                   color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.15em',
@@ -135,12 +156,10 @@ export default function Playing({
                   border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: 10, padding: 4,
                 }}>
-                  <canvas id="next-canvas" width={56} height={56}
-                    style={{ display: 'block', borderRadius: 6 }} />
+                  <canvas id="next-canvas" width={56} height={56} style={{ display: 'block', borderRadius: 6 }} />
                 </div>
               </div>
 
-              {/* Score */}
               <div style={{ textAlign: 'right' }}>
                 <div style={{
                   fontFamily: '"Nunito", system-ui', fontSize: 10,
@@ -157,11 +176,22 @@ export default function Playing({
             </div>
           </div>
 
+          {/* Session status badge */}
+          {sessionInfo && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+              fontSize: 11, fontWeight: 600, fontFamily: '"Nunito", system-ui',
+              padding: '3px 10px', borderRadius: 20, marginBottom: 6,
+              background: `${sessionInfo.dot}1a`, border: `1px solid ${sessionInfo.dot}55`,
+              color: sessionInfo.dot,
+            }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: sessionInfo.dot, flexShrink: 0 }} />
+              {sessionInfo.text}
+            </div>
+          )}
+
           {/* Game canvas */}
-          <div style={{
-            display: 'flex', justifyContent: 'center',
-            flex: 1,
-          }}>
+          <div style={{ display: 'flex', justifyContent: 'center', flex: 1 }}>
             <div style={{
               position: 'relative',
               borderRadius: 22, overflow: 'hidden',
@@ -171,17 +201,31 @@ export default function Playing({
               <canvas
                 ref={canvasRef}
                 id="game-canvas"
-                width={W}
+                width={containerWidth ?? 320}
                 height={480}
                 style={{ display: 'block', cursor: 'none', touchAction: 'none' }}
               />
-              {/* score pop toast */}
               <Toast message={toast.message} visible={toast.visible} />
             </div>
           </div>
 
+          {/* Power-up bar */}
+          {(totalBombs !== undefined || totalExpands !== undefined) && (
+            <div style={{ paddingTop: 8 }}>
+              <PowerUpBar
+                totalBombs={totalBombs}
+                totalExpands={totalExpands}
+                onUseBomb={onUseBomb}
+                onUseExpand={onUseExpand}
+                onBuyBombs={onBuyBombs}
+                onBuyExpands={onBuyExpands}
+                disabled={powerUpLoading || gameOver}
+              />
+            </div>
+          )}
+
           {/* Bottom — time boosts */}
-          <div style={{ paddingTop: 10 }}>
+          <div style={{ paddingTop: 8 }}>
             <div style={{
               fontFamily: '"Nunito", system-ui', fontSize: 10,
               color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase',
@@ -195,10 +239,25 @@ export default function Playing({
               loading={purchaseLoading}
               selectedToken={selectedToken}
               onSelectToken={onSelectToken}
+              balances={balances}
             />
           </div>
         </div>
       </CosmicBackground>
+
+      {/* Power-up shop modal */}
+      {shop && (
+        <PowerUpShop
+          type={shop}
+          packages={powerUpPackages}
+          selectedToken={powerUpToken}
+          onSelectToken={onSelectPowerUpToken}
+          onPurchase={onPurchasePowerUp}
+          loading={powerUpLoading}
+          onClose={onCloseShop}
+          balances={balances}
+        />
+      )}
     </div>
   );
 }

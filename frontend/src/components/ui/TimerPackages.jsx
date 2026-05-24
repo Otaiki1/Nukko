@@ -1,14 +1,19 @@
+import { STABLECOIN_KEYS, STABLECOINS } from '../../blockchain/tokens.js';
+
 const LABELS = ['Orbit', 'Galaxy', 'Supernova'];
 
-export default function TimerPackages({ packages, onPurchase, loading, selectedToken, onSelectToken }) {
+function fmtBalance(raw, decimals) {
+  const val = Number(raw ?? 0n) / 10 ** decimals;
+  return val < 0.01 && val > 0 ? '<0.01' : val.toFixed(2);
+}
+
+export default function TimerPackages({ packages, onPurchase, loading, selectedToken, onSelectToken, balances = {} }) {
   return (
     <div>
-      {/* Token selector — minimal, secondary */}
+      {/* Token selector */}
       {onSelectToken && (
-        <div style={{
-          display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 8,
-        }}>
-          {['cUSD', 'USDC', 'USDT'].map((key) => (
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 8 }}>
+          {STABLECOIN_KEYS.map((key) => (
             <button
               key={key}
               onClick={() => onSelectToken(key)}
@@ -22,9 +27,15 @@ export default function TimerPackages({ packages, onPurchase, loading, selectedT
                 cursor: loading ? 'not-allowed' : 'pointer',
                 opacity: loading ? 0.5 : 1,
                 transition: 'all .15s ease',
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
               }}
             >
-              {key}
+              <span>{key}</span>
+              {balances[key] !== undefined && STABLECOINS[key] && (
+                <span style={{ fontSize: 9, color: selectedToken === key ? 'rgba(255,215,0,0.65)' : 'rgba(255,255,255,0.35)', fontWeight: 400 }}>
+                  {fmtBalance(balances[key], STABLECOINS[key].decimals)}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -53,22 +64,13 @@ export default function TimerPackages({ packages, onPurchase, loading, selectedT
                 transition: 'opacity .15s ease',
               }}
             >
-              <div style={{
-                fontFamily: '"Space Mono", monospace', fontWeight: 700, fontSize: 18,
-                color: '#fff', lineHeight: 1,
-              }}>
+              <div style={{ fontFamily: '"Space Mono", monospace', fontWeight: 700, fontSize: 18, color: '#fff', lineHeight: 1 }}>
                 +{pkg.seconds}s
               </div>
-              <div style={{
-                fontFamily: '"Nunito", system-ui', fontSize: 10,
-                color: 'rgba(255,255,255,0.6)', fontWeight: 600,
-              }}>
+              <div style={{ fontFamily: '"Nunito", system-ui', fontSize: 10, color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>
                 {LABELS[i] ?? ''}
               </div>
-              <div style={{
-                fontFamily: '"Nunito", system-ui', fontSize: 11,
-                color: 'rgba(255,255,255,0.5)',
-              }}>
+              <div style={{ fontFamily: '"Nunito", system-ui', fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>
                 {pkg.priceUSD} {selectedToken ?? 'cUSD'}
               </div>
             </button>

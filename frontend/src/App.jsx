@@ -6,6 +6,8 @@ import { useTimer }       from './hooks/useTimer.js';
 import { useGame }        from './hooks/useGame.js';
 import { useLeaderboard } from './hooks/useLeaderboard.js';
 import { usePurchase }    from './hooks/usePurchase.js';
+import { usePowerUps }   from './hooks/usePowerUps.js';
+import { isUserRejection } from './utils/miniPay.js';
 import { useToast }       from './components/ui/Toast.jsx';
 
 import WalletConnect from './components/screens/WalletConnect.jsx';
@@ -33,6 +35,8 @@ export default function App() {
   const [finalScore,  setFinalScore]  = useState(0);
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [resultRank,  setResultRank]  = useState(null);
+  const [shop,          setShop]          = useState(null); // 'bomb' | 'expand' | null
+  const [sessionStatus, setSessionStatus] = useState('idle'); // 'idle'|'pending'|'confirmed'|'failed'
 
   // Refs prevent stale closures in timer/game callbacks
   const screenRef  = useRef(screen);
@@ -61,11 +65,6 @@ export default function App() {
     setScore((prev) => prev + pts);
   }, []);
 
-  const {
-    canvasRef, nextIdx, gameOver,
-    startEngine, dropFruit, movePointer, stopEngine,
-  } = useGame(handleScorePts, showToast);
-
   const handleTimerExpire = useCallback(() => {
     if (screenRef.current === S.PLAYING) {
       setFinalScore(scoreRef.current);
@@ -73,7 +72,14 @@ export default function App() {
     }
   }, []);
 
+  // useTimer must come before useGame so addTime is defined when passed in
   const { remaining, startTimer, addTime, stopTimer } = useTimer(handleTimerExpire);
+
+  const {
+    canvasRef, nextIdx, gameOver, containerWidth,
+    startEngine, dropFruit, movePointer, stopEngine,
+    activateBomb, expandContainer,
+  } = useGame(handleScorePts, showToast, addTime);
 
   const {
     entries: leaderboard,
@@ -83,11 +89,24 @@ export default function App() {
 
   const {
     packages,
+    balances,
     selectedToken,
     setSelectedToken,
     purchase,
     loading: purchaseLoading,
   } = usePurchase(walletClient, address, addTime);
+
+  const {
+    totalBombs,
+    totalExpands,
+    consumeBomb,
+    consumeExpand,
+    buyPowerUp,
+    powerUpPackages,
+    selectedToken:    powerUpToken,
+    setSelectedToken: setPowerUpToken,
+    loading:          powerUpLoading,
+  } = usePowerUps(walletClient, address);
 
   // ── Load profile after wallet connects ─────────────────────────────────────
 
@@ -111,9 +130,7 @@ export default function App() {
     setScreen(S.SUBMITTING);
   }, [gameOver, stopTimer]);
 
-  // ── Canvas starts when PLAYING screen mounts ───────────────────────────────
-  // React sets canvasRef.current in commit phase, before effects run —
-  // canvas exists by the time this fires.
+  // ── Engine starts the moment the PLAYING screen mounts ────────────────────
 
   useEffect(() => {
     if (screen !== S.PLAYING) return;
@@ -165,16 +182,22 @@ export default function App() {
   // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleStartGame = useCallback(async () => {
-    setScreen(S.STARTING);
+    setSessionStatus('pending');
+    setScreen(S.PLAYING); // game starts immediately — tx fires concurrently
     try {
       await startGameTx();
-      setScreen(S.PLAYING);
+      setSessionStatus('confirmed');
     } catch (err) {
-      console.error('startGame failed:', err);
-      showToast('Failed to open session — try again');
-      setScreen(S.HOME);
+      if (isUserRejection(err)) {
+        stopEngine();
+        stopTimer();
+        setSessionStatus('idle');
+        setScreen(S.HOME);
+        return;
+      }
+      setSessionStatus('failed');
     }
-  }, [startGameTx, showToast]);
+  }, [startGameTx, stopEngine, stopTimer]);
 
   const handleSetUsername = useCallback(async (username) => {
     await setUsernameTx(username);
@@ -188,9 +211,35 @@ export default function App() {
       const secs = await purchase(pkgIdx);
       showToast(`+${secs}s ⏱`);
     } catch (err) {
+      if (isUserRejection(err)) return; // stay on game board
       showToast(err.message || 'Purchase failed');
     }
   }, [purchase, showToast]);
+
+  const handleUseBomb = useCallback(() => {
+    const consumed = consumeBomb();
+    if (!consumed) return;
+    const removed = activateBomb();
+    if (removed) showToast('💣 Boom!');
+  }, [consumeBomb, activateBomb, showToast]);
+
+  const handleUseExpand = useCallback(() => {
+    const consumed = consumeExpand();
+    if (!consumed) return;
+    expandContainer();
+    showToast('📦 Bucket expanded!');
+  }, [consumeExpand, expandContainer, showToast]);
+
+  const handlePurchasePowerUp = useCallback(async (pkgIdx) => {
+    try {
+      const qty = await buyPowerUp(shop, pkgIdx);
+      showToast(`+${qty} ${shop === 'bomb' ? '💣' : '📦'} added!`);
+      setShop(null);
+    } catch (err) {
+      if (isUserRejection(err)) { setShop(null); return; } // stay on game board
+      showToast(err.message || 'Purchase failed');
+    }
+  }, [buyPowerUp, shop, showToast]);
 
   // ── Screen routing ──────────────────────────────────────────────────────────
 
@@ -231,14 +280,30 @@ export default function App() {
         <Playing
           canvasRef={canvasRef}
           nextIdx={nextIdx}
+          sessionStatus={sessionStatus}
           score={score}
           personalBest={profile?.personalBest ?? 0}
           remaining={remaining}
+          containerWidth={containerWidth}
           packages={packages}
           onPurchase={handlePurchase}
           purchaseLoading={purchaseLoading}
           selectedToken={selectedToken}
           onSelectToken={setSelectedToken}
+          balances={balances}
+          totalBombs={totalBombs}
+          totalExpands={totalExpands}
+          onUseBomb={handleUseBomb}
+          onUseExpand={handleUseExpand}
+          onBuyBombs={() => setShop('bomb')}
+          onBuyExpands={() => setShop('expand')}
+          powerUpLoading={powerUpLoading}
+          shop={shop}
+          onCloseShop={() => setShop(null)}
+          powerUpPackages={powerUpPackages}
+          powerUpToken={powerUpToken}
+          onSelectPowerUpToken={setPowerUpToken}
+          onPurchasePowerUp={handlePurchasePowerUp}
           toast={toast}
           movePointer={movePointer}
           dropFruit={dropFruit}

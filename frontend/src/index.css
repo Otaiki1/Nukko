@@ -21,9 +21,139 @@ html, body {
   margin: 0 auto;
   height: 100%;
   overflow: hidden;
+  transition: width 0.2s ease;
 }
 
 button { font-family: inherit; cursor: pointer; }
+
+/* Session status badge */
+.session-badge {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 600;
+  padding: 4px 12px; border-radius: 20px;
+  border: 1px solid transparent;
+}
+.session-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.session-badge--amber {
+  background: rgba(255,180,0,0.12); border-color: rgba(255,180,0,0.35); color: #ffb400;
+}
+.session-badge--amber .session-dot {
+  background: #ffb400;
+  animation: pulse 0.9s ease-in-out infinite alternate;
+}
+.session-badge--green {
+  background: rgba(46,204,113,0.12); border-color: rgba(46,204,113,0.35); color: #2ecc71;
+}
+.session-badge--green .session-dot { background: #2ecc71; }
+.session-badge--red {
+  background: rgba(255,70,70,0.12); border-color: rgba(255,70,70,0.35); color: #ff4646;
+}
+.session-badge--red .session-dot { background: #ff4646; }
+
+/* Time packages */
+.time-packages-wrap { width: 100%; max-width: 360px; padding: 0 12px; }
+
+.token-tab:disabled { opacity: 0.4; cursor: not-allowed; }
+.token-tab { flex-direction: column; }
+.token-bal { font-size: 10px; color: rgba(255,255,255,0.4); font-weight: 400; margin-top: 1px; }
+.token-tab.active .token-bal { color: rgba(255,215,0,0.65); }
+
+.time-packages {
+  display: flex; gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.pkg-btn:active  { transform: scale(0.96); background: rgba(255,215,0,0.15); }
+.pkg-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.pkg-time  { font-size: 15px; font-weight: 700; color: #ffd700; }
+.pkg-price { font-size: 11px; color: rgba(255,255,255,0.55); margin-top: 2px; }
+
+.play-hint { font-size: 11px; color: rgba(255,255,255,0.35); }
+
+/* ── Power-up bar ──────────────────────────────────────────────────────────── */
+.powerup-bar {
+  display: flex; align-items: center; justify-content: center;
+  gap: 16px; width: 100%; max-width: 360px; padding: 0 12px;
+}
+
+.powerup-item {
+  display: flex; align-items: center; gap: 6px;
+}
+
+.powerup-use-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,0.08);
+  border: 1.5px solid rgba(255,215,0,0.35);
+  border-radius: 12px; padding: 8px 14px;
+  font-size: 18px; color: #fff; cursor: pointer;
+  transition: background 0.1s, transform 0.1s;
+}
+.powerup-use-btn span { font-size: 13px; font-weight: 700; color: #ffd700; }
+.powerup-use-btn:active { transform: scale(0.95); background: rgba(255,215,0,0.15); }
+.powerup-use-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.powerup-buy-btn {
+  background: rgba(255,215,0,0.15);
+  border: 1.5px solid rgba(255,215,0,0.5);
+  border-radius: 8px; width: 28px; height: 28px;
+  font-size: 16px; font-weight: 700; color: #ffd700;
+  cursor: pointer; transition: background 0.1s;
+  display: flex; align-items: center; justify-content: center;
+}
+.powerup-buy-btn:active { background: rgba(255,215,0,0.3); }
+.powerup-buy-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.powerup-divider {
+  width: 1px; height: 36px;
+  background: rgba(255,255,255,0.15);
+}
+
+/* ── Power-up shop modal ───────────────────────────────────────────────────── */
+.shop-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,0.65);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+
+.shop-modal {
+  width: 100%; max-width: 400px;
+  background: #1e0f3a;
+  border-radius: 20px 20px 0 0;
+  padding: 24px 20px 32px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+.shop-modal h3 { font-size: 18px; font-weight: 800; color: #ffd700; text-align: center; }
+
+.shop-packages {
+  display: flex; gap: 10px; justify-content: center;
+}
+
+.pkg-qty  { font-size: 14px; font-weight: 700; color: #fff; }
+
+.shop-close-btn {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 12px; padding: 10px;
+  font-size: 13px; color: rgba(255,255,255,0.6);
+  cursor: pointer; margin-top: 4px;
+}
+.shop-close-btn:active { background: rgba(255,255,255,0.14); }
+
+/* Toast */
+.toast {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%,-50%) scale(0);
+  background: rgba(255,215,0,0.95); color: #1a0a2e;
+  font-size: 18px; font-weight: 800;
+  padding: 8px 20px; border-radius: 10px;
+  pointer-events: none;
+  transition: transform 0.15s, opacity 0.3s;
+  opacity: 0; white-space: nowrap;
+}
 
 /* ── Nukko keyframe animations ─────────────────────────────────── */
 @keyframes nukko-bob {

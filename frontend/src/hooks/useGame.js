@@ -2,43 +2,54 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import Matter from 'matter-js';
 import { FRUITS, randFruitIdx, drawFruitOnCtx } from '../game/fruits.js';
 
-const { Engine, Bodies, Events, Composite, World } = Matter;
+const { Engine, Bodies, Events, Composite, World, Body } = Matter;
 
-const W        = 320;
-const H        = 480;
-const WALL     = 60;
-const DANGER_Y = 80;
+// Main's new constants (expandable container) + HEAD's thick wall (anti-tunneling)
+const BASE_W    = 320;
+const MAX_W     = 440;
+const EXPAND_PX = 30;
+const H         = 480;
+const WALL      = 60;
+const DANGER_Y  = 80;
 
-export function useGame(onScorePts, onToast) {
+function mergeTimeBonus(newIdx) {
+  if (newIdx >= 8) return 5;
+  if (newIdx >= 5) return Math.random() < 0.5 ? 2 : 5;
+  return 2;
+}
+
+export function useGame(onScorePts, onToast, onAddTime) {
   const canvasRef = useRef(null);
 
-  // Matter.js internals — never trigger re-renders
   const engineRef      = useRef(null);
   const worldRef       = useRef(null);
   const bodiesRef      = useRef([]);
   const mergeQueueRef  = useRef(new Set());
   const gameLoopRef    = useRef(null);
+  const rightWallRef   = useRef(null);
+  const containerWRef  = useRef(BASE_W);
 
   // Visual FX refs — stable random data + live burst list
   const vacuumStarsRef = useRef(null);
   const mergeBurstsRef = useRef([]);
 
-  // Sync refs to avoid stale closures inside the RAF loop
   const currentIdxRef  = useRef(0);
   const nextIdxRef     = useRef(0);
-  const dropXRef       = useRef(W / 2);
+  const dropXRef       = useRef(BASE_W / 2);
   const canDropRef     = useRef(true);
   const gameOverRef    = useRef(false);
   const onScoreRef     = useRef(onScorePts);
   const onToastRef     = useRef(onToast);
+  const onAddTimeRef   = useRef(onAddTime);
 
-  useEffect(() => { onScoreRef.current  = onScorePts; }, [onScorePts]);
-  useEffect(() => { onToastRef.current  = onToast;    }, [onToast]);
+  useEffect(() => { onScoreRef.current   = onScorePts; }, [onScorePts]);
+  useEffect(() => { onToastRef.current   = onToast;    }, [onToast]);
+  useEffect(() => { onAddTimeRef.current = onAddTime;  }, [onAddTime]);
 
-  // React state for UI — only what components need to render
-  const [currentIdx, setCurrentIdx] = useState(() => randFruitIdx());
-  const [nextIdx,    setNextIdx]     = useState(() => randFruitIdx());
-  const [gameOver,   setGameOver]    = useState(false);
+  const [currentIdx,     setCurrentIdx]     = useState(() => randFruitIdx());
+  const [nextIdx,        setNextIdx]        = useState(() => randFruitIdx());
+  const [gameOver,       setGameOver]       = useState(false);
+  const [containerWidth, setContainerWidth] = useState(BASE_W);
 
   // ── Fruit body creation ────────────────────────────────────────────────────
 
@@ -62,26 +73,27 @@ export function useGame(onScorePts, onToast) {
   const render = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const cw  = containerWRef.current;
     const ctx = canvas.getContext('2d');
     const now = Date.now();
 
-    ctx.clearRect(0, 0, W, H);
+    ctx.clearRect(0, 0, cw, H);
 
     // ── Background: deep void
     ctx.fillStyle = '#050009';
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, cw, H);
 
     // Purple suction glow at the bottom
-    const bottomGlow = ctx.createRadialGradient(W/2, H, 0, W/2, H, W * 0.9);
+    const bottomGlow = ctx.createRadialGradient(cw/2, H, 0, cw/2, H, cw * 0.9);
     bottomGlow.addColorStop(0, 'rgba(123,47,255,0.2)');
     bottomGlow.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = bottomGlow; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = bottomGlow; ctx.fillRect(0, 0, cw, H);
 
     // Inner vignette — darkens corners so play area reads as a window into space
-    const cornerDark = ctx.createRadialGradient(W/2, H/2, H*0.28, W/2, H/2, H*0.75);
+    const cornerDark = ctx.createRadialGradient(cw/2, H/2, H*0.28, cw/2, H/2, H*0.75);
     cornerDark.addColorStop(0, 'rgba(0,0,0,0)');
     cornerDark.addColorStop(1, 'rgba(0,0,0,0.55)');
-    ctx.fillStyle = cornerDark; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = cornerDark; ctx.fillRect(0, 0, cw, H);
 
     // ── Vacuum stars — twinkling background
     if (vacuumStarsRef.current) {
@@ -113,7 +125,7 @@ export function useGame(onScorePts, onToast) {
     ctx.strokeStyle = `rgba(255,59,59,${dangerAlpha})`;
     ctx.lineWidth = isInDanger ? 1.5 : 1;
     if (isInDanger) { ctx.shadowBlur = 10; ctx.shadowColor = '#ff3b3b'; }
-    ctx.beginPath(); ctx.moveTo(8, DANGER_Y); ctx.lineTo(W - 8, DANGER_Y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(8, DANGER_Y); ctx.lineTo(cw - 8, DANGER_Y); ctx.stroke();
     ctx.shadowBlur = 0; ctx.restore();
 
     // Danger badge — centred on the line
@@ -122,7 +134,7 @@ export function useGame(onScorePts, onToast) {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const badgeLabel = '⚠ DANGER ZONE';
     const bw = ctx.measureText(badgeLabel).width;
-    const bx = W / 2, by = DANGER_Y - 11;
+    const bx = cw / 2, by = DANGER_Y - 11;
     const px = 6, py = 3;
     ctx.fillStyle = isInDanger ? '#ff3b3b' : 'rgba(255,59,59,0.18)';
     if (isInDanger) { ctx.shadowBlur = 14; ctx.shadowColor = 'rgba(255,59,59,0.7)'; }
@@ -177,7 +189,7 @@ export function useGame(onScorePts, onToast) {
     mergeBurstsRef.current = mergeBurstsRef.current.filter(b => now - b.startedAt < 650);
     mergeBurstsRef.current.forEach((burst) => {
       const age    = (now - burst.startedAt) / 650;
-      const eased  = 1 - Math.pow(1 - age, 3);          // ease-out cubic
+      const eased  = 1 - Math.pow(1 - age, 3);
       const burstR = burst.r * (1 + eased * 2.8);
       ctx.save();
       ctx.globalAlpha = (1 - age) * 0.72;
@@ -193,23 +205,23 @@ export function useGame(onScorePts, onToast) {
     // ── Danger red vignette (pulsing edge glow)
     if (isInDanger) {
       const pulse = 0.22 + 0.14 * Math.sin(now / 340);
-      const dv = ctx.createRadialGradient(W/2, H/2, H*0.26, W/2, H/2, H*0.76);
+      const dv = ctx.createRadialGradient(cw/2, H/2, H*0.26, cw/2, H/2, H*0.76);
       dv.addColorStop(0, 'rgba(0,0,0,0)');
       dv.addColorStop(1, `rgba(255,59,59,${pulse})`);
-      ctx.fillStyle = dv; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = dv; ctx.fillRect(0, 0, cw, H);
     }
 
     // ── Stack-fill gauge (right edge bar)
-    const gx = W - 7, gtop = 16, gbot = H - 16, gh = gbot - gtop;
+    const gx = cw - 7, gtop = 16, gbot = H - 16, gh = gbot - gtop;
     ctx.save(); ctx.globalAlpha = 0.72;
     ctx.fillStyle = 'rgba(255,255,255,0.06)';
     ctx.beginPath(); ctx.roundRect(gx - 2, gtop, 4, gh, 2); ctx.fill();
     if (stackFill > 0.02) {
       const fh = gh * stackFill;
       const gg = ctx.createLinearGradient(0, gbot, 0, gbot - fh);
-      if (isInDanger)       { gg.addColorStop(0,'#ff3b3b'); gg.addColorStop(1,'#ff8a8a'); }
+      if (isInDanger)           { gg.addColorStop(0,'#ff3b3b'); gg.addColorStop(1,'#ff8a8a'); }
       else if (stackFill > 0.6) { gg.addColorStop(0,'#ffd700'); gg.addColorStop(1,'#ff8a4a'); }
-      else                  { gg.addColorStop(0,'#00d4ff'); gg.addColorStop(1,'#7b2fff'); }
+      else                      { gg.addColorStop(0,'#00d4ff'); gg.addColorStop(1,'#7b2fff'); }
       ctx.fillStyle = gg;
       ctx.beginPath(); ctx.roundRect(gx - 2, gbot - fh, 4, fh, 2); ctx.fill();
     }
@@ -262,9 +274,11 @@ export function useGame(onScorePts, onToast) {
         const newIdx = idx + 1;
         addFruitBody(mx, my, newIdx);
         onScoreRef.current?.(FRUITS[newIdx].pts);
-        onToastRef.current?.(`${FRUITS[newIdx].emoji} +${FRUITS[newIdx].pts}`);
+        const bonus = mergeTimeBonus(newIdx);
+        onAddTimeRef.current?.(bonus);
+        onToastRef.current?.(`${FRUITS[newIdx].emoji} +${FRUITS[newIdx].pts} ⏱+${bonus}s`);
 
-        // Queue a visual burst at the merge point
+        // Visual burst at the merge point
         mergeBurstsRef.current.push({ x: mx, y: my, color: FRUITS[newIdx].color, r: FRUITS[newIdx].r, startedAt: Date.now() });
 
         mergeQueueRef.current.delete([a.id, b.id].sort().join('-'));
@@ -275,16 +289,19 @@ export function useGame(onScorePts, onToast) {
   // ── Physics initialisation ─────────────────────────────────────────────────
 
   const initPhysics = useCallback(() => {
+    const cw     = containerWRef.current;
     const engine = Engine.create({ gravity: { y: 28 } });
     const world  = engine.world;
     engineRef.current = engine;
     worldRef.current  = world;
 
-    World.add(world, [
-      Bodies.rectangle(W / 2,     H + WALL / 2, W,    WALL, { isStatic: true, label: 'wall', friction: 0.5,  restitution: 0.1 }),
-      Bodies.rectangle(-WALL / 2, H / 2,        WALL, H * 2, { isStatic: true, label: 'wall' }),
-      Bodies.rectangle(W + WALL / 2, H / 2,     WALL, H * 2, { isStatic: true, label: 'wall' }),
-    ]);
+    // Bottom wall extra wide to survive container expansions without rebuild
+    const floor     = Bodies.rectangle(cw / 2,        H + WALL / 2, MAX_W * 2, WALL, { isStatic: true, label: 'wall', friction: 0.5, restitution: 0.1 });
+    const leftWall  = Bodies.rectangle(-WALL / 2,      H / 2,        WALL,      H * 2, { isStatic: true, label: 'wall' });
+    const rightWall = Bodies.rectangle(cw + WALL / 2,  H / 2,        WALL,      H * 2, { isStatic: true, label: 'wall' });
+
+    rightWallRef.current = rightWall;
+    World.add(world, [floor, leftWall, rightWall]);
     Events.on(engine, 'collisionStart', handleCollision);
   }, [handleCollision]);
 
@@ -305,23 +322,23 @@ export function useGame(onScorePts, onToast) {
   // ── Public API ─────────────────────────────────────────────────────────────
 
   const startEngine = useCallback(() => {
-    // Teardown any previous session
     if (engineRef.current) {
       cancelAnimationFrame(gameLoopRef.current);
       World.clear(worldRef.current);
       Engine.clear(engineRef.current);
     }
 
-    bodiesRef.current     = [];
+    bodiesRef.current        = [];
     mergeQueueRef.current.clear();
-    mergeBurstsRef.current = [];
-    gameOverRef.current   = false;
-    canDropRef.current    = true;
-    dropXRef.current      = W / 2;
+    mergeBurstsRef.current   = [];
+    gameOverRef.current      = false;
+    canDropRef.current       = true;
+    containerWRef.current    = BASE_W;
+    dropXRef.current         = BASE_W / 2;
 
     // Generate stable twinkling star field for the canvas vacuum
     vacuumStarsRef.current = Array.from({ length: 38 }, () => ({
-      x:     Math.random() * W,
+      x:     Math.random() * BASE_W,
       y:     Math.random() * H,
       r:     Math.random() * 1.1 + 0.25,
       o:     Math.random() * 0.5 + 0.15,
@@ -336,6 +353,7 @@ export function useGame(onScorePts, onToast) {
     setCurrentIdx(ci);
     setNextIdx(ni);
     setGameOver(false);
+    setContainerWidth(BASE_W);
 
     initPhysics();
     startLoop();
@@ -345,11 +363,7 @@ export function useGame(onScorePts, onToast) {
     if (!canDropRef.current || gameOverRef.current) return;
     canDropRef.current = false;
 
-    addFruitBody(
-      dropXRef.current,
-      FRUITS[currentIdxRef.current].r + 5,
-      currentIdxRef.current,
-    );
+    addFruitBody(dropXRef.current, FRUITS[currentIdxRef.current].r + 5, currentIdxRef.current);
 
     const next    = nextIdxRef.current;
     const newNext = randFruitIdx();
@@ -364,7 +378,7 @@ export function useGame(onScorePts, onToast) {
   const movePointer = useCallback((rawX) => {
     if (gameOverRef.current) return;
     const r = FRUITS[currentIdxRef.current].r;
-    dropXRef.current = Math.max(r, Math.min(W - r, rawX));
+    dropXRef.current = Math.max(r, Math.min(containerWRef.current - r, rawX));
   }, []);
 
   const stopEngine = useCallback(() => {
@@ -375,7 +389,28 @@ export function useGame(onScorePts, onToast) {
     }
   }, []);
 
-  // Cleanup on App unmount
+  // Remove the topmost fruit (smallest y) — the most dangerous one
+  const activateBomb = useCallback(() => {
+    if (!worldRef.current || bodiesRef.current.length === 0) return false;
+    let target = bodiesRef.current[0];
+    for (const b of bodiesRef.current) {
+      if (b.position.y < target.position.y) target = b;
+    }
+    World.remove(worldRef.current, target);
+    bodiesRef.current = bodiesRef.current.filter((b) => b !== target);
+    return true;
+  }, []);
+
+  // Widen the container by moving the right wall outward
+  const expandContainer = useCallback(() => {
+    if (!worldRef.current || !rightWallRef.current) return;
+    if (containerWRef.current >= MAX_W) return;
+    containerWRef.current = Math.min(containerWRef.current + EXPAND_PX, MAX_W);
+    Body.setPosition(rightWallRef.current, { x: containerWRef.current + WALL / 2, y: H / 2 });
+    setContainerWidth(containerWRef.current);
+  }, []);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       cancelAnimationFrame(gameLoopRef.current);
@@ -391,9 +426,12 @@ export function useGame(onScorePts, onToast) {
     currentIdx,
     nextIdx,
     gameOver,
+    containerWidth,
     startEngine,
     dropFruit,
     movePointer,
     stopEngine,
+    activateBomb,
+    expandContainer,
   };
 }
