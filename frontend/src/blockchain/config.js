@@ -6,5 +6,5 @@ export const CHAIN = celo;
 // Singleton read-only client — safe to import anywhere
 export const publicClient = createPublicClient({
   chain: CHAIN,
-  transport: http(),
+  transport: http(import.meta.env.VITE_RPC_URL),
 });
