@@ -1,6 +1,6 @@
 [build]
   base    = "frontend"
-  command = "npm run build"
+  command = "npm ci && npm run build"
   publish = "dist"
 
 # Correct MIME types for JS/CSS assets (fixes module script MIME errors)
