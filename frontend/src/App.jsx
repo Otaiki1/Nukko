@@ -18,6 +18,7 @@ import Starting      from './components/screens/Starting.jsx';
 import Playing       from './components/screens/Playing.jsx';
 import Submitting    from './components/screens/Submitting.jsx';
 import Result        from './components/screens/Result.jsx';
+import HowToPlay     from './components/ui/HowToPlay.jsx';
 
 const S = {
   WALLET_CONNECT: 'WALLET_CONNECT',
@@ -38,6 +39,7 @@ export default function App() {
   const [resultRank,  setResultRank]  = useState(null);
   const [shop,          setShop]          = useState(null); // 'bomb' | 'expand' | null
   const [sessionStatus, setSessionStatus] = useState('idle'); // 'idle'|'pending'|'confirmed'|'failed'
+  const [showTutorial,  setShowTutorial]  = useState(false);
 
   // Refs prevent stale closures in timer/game callbacks
   const screenRef  = useRef(screen);
@@ -122,6 +124,14 @@ export default function App() {
       })
       .catch(console.error);
   }, [address, getProfile]);
+
+  // ── Show how-to-play the first time the HOME screen appears ───────────────
+
+  useEffect(() => {
+    if (screen === S.HOME && !localStorage.getItem('nk_tutorial_seen')) {
+      setShowTutorial(true);
+    }
+  }, [screen]);
 
   // ── Physics game-over → SUBMITTING ─────────────────────────────────────────
 
@@ -269,12 +279,20 @@ export default function App() {
 
     case S.HOME:
       return (
-        <Home
-          profile={profile}
-          leaderboard={leaderboard}
-          leaderboardLoading={leaderboardLoading}
-          onStartGame={handleStartGame}
-        />
+        <>
+          <Home
+            profile={profile}
+            leaderboard={leaderboard}
+            leaderboardLoading={leaderboardLoading}
+            onStartGame={handleStartGame}
+          />
+          {showTutorial && (
+            <HowToPlay onDone={() => {
+              localStorage.setItem('nk_tutorial_seen', '1');
+              setShowTutorial(false);
+            }} />
+          )}
+        </>
       );
 
     case S.STARTING:
