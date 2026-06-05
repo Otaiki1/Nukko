@@ -39,7 +39,7 @@ function StatPill({ label, value, accent }) {
   );
 }
 
-export default function Home({ profile, leaderboard, leaderboardLoading, onStartGame }) {
+export default function Home({ profile, leaderboard, leaderboardLoading, onStartGame, onOpenLegal, onOpenFAQ }) {
   const username  = profile?.username || 'Anonymous';
   const best      = profile?.personalBest ?? 0;
   const games     = profile?.gamesPlayed  ?? 0;
@@ -177,6 +177,35 @@ export default function Home({ profile, leaderboard, leaderboardLoading, onStart
               pointerEvents: 'none',
             }}>
               Free · 90 seconds · Earn on Celo
+            </div>
+
+            {/* Legal footer */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+              marginTop: 10, pointerEvents: 'all',
+              fontFamily: '"Nunito", system-ui', fontSize: 10,
+            }}>
+              {[
+                { key: 'terms',   label: 'Terms',   action: () => onOpenLegal?.('terms')   },
+                { key: 'privacy', label: 'Privacy', action: () => onOpenLegal?.('privacy') },
+                { key: 'faq',     label: 'FAQ',     action: () => onOpenFAQ?.()            },
+                { key: 'about',   label: 'About',   action: () => onOpenLegal?.('about')   },
+              ].map(({ key, label, action }, i) => (
+                <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  {i > 0 && <span style={{ color: 'rgba(255,255,255,0.2)' }}>·</span>}
+                  <button
+                    onClick={action}
+                    style={{
+                      background: 'none', border: 'none', padding: '2px 4px',
+                      fontFamily: 'inherit', fontSize: 'inherit',
+                      color: 'rgba(255,255,255,0.28)', cursor: 'pointer',
+                      textDecoration: 'underline', textUnderlineOffset: 2,
+                    }}
+                  >
+                    {label}
+                  </button>
+                </span>
+              ))}
             </div>
           </div>
 

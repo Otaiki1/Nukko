@@ -19,6 +19,8 @@ import Playing       from './components/screens/Playing.jsx';
 import Submitting    from './components/screens/Submitting.jsx';
 import Result        from './components/screens/Result.jsx';
 import HowToPlay     from './components/ui/HowToPlay.jsx';
+import LegalModal    from './components/ui/LegalModal.jsx';
+import FAQModal      from './components/ui/FAQModal.jsx';
 
 const S = {
   WALLET_CONNECT: 'WALLET_CONNECT',
@@ -40,6 +42,8 @@ export default function App() {
   const [shop,          setShop]          = useState(null); // 'bomb' | 'expand' | null
   const [sessionStatus, setSessionStatus] = useState('idle'); // 'idle'|'pending'|'confirmed'|'failed'
   const [showTutorial,  setShowTutorial]  = useState(false);
+  const [legalModal,    setLegalModal]    = useState(null); // 'terms'|'privacy'|'about'|null
+  const [showFAQ,       setShowFAQ]       = useState(false);
 
   // Refs prevent stale closures in timer/game callbacks
   const screenRef  = useRef(screen);
@@ -285,6 +289,8 @@ export default function App() {
             leaderboard={leaderboard}
             leaderboardLoading={leaderboardLoading}
             onStartGame={handleStartGame}
+            onOpenLegal={setLegalModal}
+            onOpenFAQ={() => setShowFAQ(true)}
           />
           {showTutorial && (
             <HowToPlay onDone={() => {
@@ -292,6 +298,8 @@ export default function App() {
               setShowTutorial(false);
             }} />
           )}
+          <LegalModal type={legalModal} onClose={() => setLegalModal(null)} />
+          <FAQModal isOpen={showFAQ} onClose={() => setShowFAQ(false)} />
         </>
       );
 
