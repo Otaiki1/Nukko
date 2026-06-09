@@ -44,6 +44,9 @@ export default function App() {
   const [shop,          setShop]          = useState(null); // 'bomb' | 'expand' | null
   const [sessionStatus, setSessionStatus] = useState('idle'); // 'idle'|'pending'|'confirmed'|'failed'
   const [showTutorial,  setShowTutorial]  = useState(false);
+  const [hasPausedGame, setHasPausedGame] = useState(false);
+  // Ref so the PLAYING useEffect can skip startEngine when resuming a paused game
+  const isResumingRef = useRef(false);
   const [legalModal,    setLegalModal]    = useState(null); // 'terms'|'privacy'|'about'|null
   const [showFAQ,       setShowFAQ]       = useState(false);
 
@@ -72,6 +75,7 @@ export default function App() {
 
   const { toast, showToast } = useToast();
   const audio = useAudio();
+  const { muted, toggleMute } = audio;
 
   const handleScorePts = useCallback((pts) => {
     setScore((prev) => prev + pts);
@@ -90,6 +94,7 @@ export default function App() {
   const {
     canvasRef, nextIdx, nextNextIdx, gameOver, containerWidth,
     startEngine, dropFruit, movePointer, stopEngine,
+    pauseEngine, resumeEngine,
     activateBomb, expandContainer, triggerTimeFX,
   } = useGame(handleScorePts, showToast, addTime, audio);
 
@@ -146,6 +151,7 @@ export default function App() {
   useEffect(() => {
     if (!gameOver || screenRef.current !== S.PLAYING) return;
     stopTimer();
+    setHasPausedGame(false);
     setFinalScore(scoreRef.current);
     setScreen(S.SUBMITTING);
   }, [gameOver, stopTimer]);
@@ -156,6 +162,13 @@ export default function App() {
 
   useEffect(() => {
     if (screen !== S.PLAYING) return;
+    // If we're resuming a paused game, engine + timer are already running —
+    // just clear the flag and leave everything alone.
+    if (isResumingRef.current) {
+      isResumingRef.current = false;
+      return;
+    }
+    // Fresh start
     setScore(0);
     scoreRef.current = 0;
     startEngine();
@@ -203,7 +216,28 @@ export default function App() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
+  // Pause-to-home: keep the physics world + timer alive so game can be continued
+  const handleGoHome = useCallback(() => {
+    pauseEngine();
+    pauseTimer();
+    setHasPausedGame(true);
+    setScreen(S.HOME);
+  }, [pauseEngine, pauseTimer]);
+
+  // Continue a paused game: set the resuming flag, unblock the timer, switch screen.
+  // resumeEngine() is intentionally NOT called here — Playing's mount-effect calls it
+  // after the canvas element is in the DOM (avoids black screen from stale ctx).
+  const handleContinueGame = useCallback(() => {
+    isResumingRef.current = true;
+    resumeTimer();
+    setHasPausedGame(false);
+    setScreen(S.PLAYING);
+  }, [resumeTimer]);
+
   const handleStartGame = useCallback(async () => {
+    // Discard any paused game and start fresh
+    setHasPausedGame(false);
+    isResumingRef.current = false;
     setSessionStatus('pending');
     setScreen(S.PLAYING); // game starts immediately — tx fires concurrently
     try {
@@ -302,6 +336,10 @@ export default function App() {
             leaderboard={leaderboard}
             leaderboardLoading={leaderboardLoading}
             onStartGame={handleStartGame}
+            hasPausedGame={hasPausedGame}
+            pausedScore={score}
+            pausedRemaining={remaining}
+            onContinueGame={handleContinueGame}
             onOpenLegal={setLegalModal}
             onOpenFAQ={() => setShowFAQ(true)}
           />
@@ -353,6 +391,11 @@ export default function App() {
           onPurchasePowerUp={handlePurchasePowerUp}
           pauseTimer={pauseTimer}
           resumeTimer={resumeTimer}
+          pauseEngine={pauseEngine}
+          resumeEngine={resumeEngine}
+          onGoHome={handleGoHome}
+          muted={muted}
+          onToggleMute={toggleMute}
           toast={toast}
           movePointer={movePointer}
           dropFruit={dropFruit}

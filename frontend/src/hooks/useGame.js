@@ -52,6 +52,7 @@ export function useGame(onScorePts, onToast, onAddTime, audio) {
   const bodiesRef     = useRef([]);
   const mergeQueueRef = useRef(new Set());
   const gameLoopRef   = useRef(null);
+  const tickRef       = useRef(null);  // stored so pauseEngine/resumeEngine can cancel/restart
   const rightWallRef  = useRef(null);
   const containerWRef = useRef(BASE_W);
 
@@ -139,10 +140,16 @@ export function useGame(onScorePts, onToast, onAddTime, audio) {
     if (!canvas) return;
     const cw = containerWRef.current;
 
-    // Cache the 2D context; invalidate if canvas size changed (e.g. on expand)
-    if (!ctxRef.current || canvas.width !== cw || canvas.height !== H) {
-      // Let React control canvas.width/height via JSX — don't fight it here.
-      // We only check sizes to know when to invalidate the gradient cache.
+    // Cache the 2D context; invalidate when the canvas element itself changes
+    // (e.g. Playing unmounts then remounts after pause→home→continue), or when
+    // dimensions change (expand power-up). Without the identity check, ctxRef
+    // keeps pointing to the detached old canvas and nothing renders (black screen).
+    if (
+      !ctxRef.current ||
+      ctxRef.current.canvas !== canvas ||   // ← canvas identity: remount detection
+      canvas.width !== cw ||
+      canvas.height !== H
+    ) {
       ctxRef.current = null;
       gradCacheRef.current = {};
     }
@@ -826,6 +833,7 @@ export function useGame(onScorePts, onToast, onAddTime, audio) {
       checkGameOver();
       gameLoopRef.current = requestAnimationFrame(tick);
     };
+    tickRef.current     = tick;
     gameLoopRef.current = requestAnimationFrame(tick);
 
     // Visibility pause: reset lastTime on return so no giant dt spike
@@ -1021,6 +1029,18 @@ export function useGame(onScorePts, onToast, onAddTime, audio) {
     audioRef.current?.playTime?.();
   }, []);
 
+  // ── Pause / Resume RAF loop (does NOT clear physics world) ─────────────────
+  const pauseEngine = useCallback(() => {
+    cancelAnimationFrame(gameLoopRef.current);
+    audioRef.current?.stopDanger?.();
+  }, []);
+
+  const resumeEngine = useCallback(() => {
+    if (!tickRef.current || gameOverRef.current) return;
+    lastTimeRef.current = performance.now(); // reset dt so no spike on resume
+    gameLoopRef.current = requestAnimationFrame(tickRef.current);
+  }, []);
+
   useEffect(() => {
     return () => {
       cancelAnimationFrame(gameLoopRef.current);
@@ -1043,6 +1063,8 @@ export function useGame(onScorePts, onToast, onAddTime, audio) {
     dropFruit,
     movePointer,
     stopEngine,
+    pauseEngine,
+    resumeEngine,
     activateBomb,
     expandContainer,
     triggerTimeFX,
