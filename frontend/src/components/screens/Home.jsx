@@ -248,14 +248,6 @@ export default function Home({ profile, leaderboard, leaderboardLoading, onStart
                 >
                   Play Now
                 </button>
-                <div style={{
-                  textAlign: 'center', marginTop: 8,
-                  fontFamily: '"Nunito", system-ui', fontSize: 11,
-                  color: 'rgba(255,255,255,0.38)',
-                  pointerEvents: 'none',
-                }}>
-                  Free · 90 seconds · Earn on Celo
-                </div>
               </>
             )}
 
