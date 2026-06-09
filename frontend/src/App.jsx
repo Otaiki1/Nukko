@@ -7,6 +7,7 @@ import { useGame }        from './hooks/useGame.js';
 import { useLeaderboard } from './hooks/useLeaderboard.js';
 import { usePurchase }    from './hooks/usePurchase.js';
 import { usePowerUps }   from './hooks/usePowerUps.js';
+import { useGasCheck }    from './hooks/useGasCheck.js';
 import { isUserRejection } from './utils/miniPay.js';
 import { useToast }       from './components/ui/Toast.jsx';
 import { useAudio }       from './hooks/useAudio.js';
@@ -19,6 +20,7 @@ import Playing       from './components/screens/Playing.jsx';
 import Submitting    from './components/screens/Submitting.jsx';
 import Result        from './components/screens/Result.jsx';
 import HowToPlay     from './components/ui/HowToPlay.jsx';
+import LowGasModal   from './components/ui/LowGasModal.jsx';
 import LegalModal    from './components/ui/LegalModal.jsx';
 import FAQModal      from './components/ui/FAQModal.jsx';
 
@@ -55,7 +57,9 @@ export default function App() {
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
 
-  const { address, walletClient, isMiniPay, connect, error: walletError } = useWallet();
+  const { address, walletClient, isMiniPay, connect, connectWithSocial, socialLoading, error: walletError } = useWallet();
+
+  const { hasGas, balanceDisplay, checking: gasChecking, recheckNow } = useGasCheck(address);
 
   const {
     startGame: startGameTx,
@@ -262,27 +266,36 @@ export default function App() {
 
   // ── Screen routing ──────────────────────────────────────────────────────────
 
+  // Low-gas modal overlays every post-connect screen.
+  // Dismissed automatically the moment the balance poll detects sufficient CELO.
+  const showGasModal = !!address && !hasGas && screen !== S.WALLET_CONNECT;
+
+  let currentScreen;
   switch (screen) {
     case S.WALLET_CONNECT:
-      return (
+      currentScreen = (
         <WalletConnect
           onConnect={connect}
+          onConnectSocial={connectWithSocial}
+          socialLoading={socialLoading}
           isMiniPay={isMiniPay}
           error={walletError}
         />
       );
+      break;
 
     case S.SET_USERNAME:
-      return (
+      currentScreen = (
         <SetUsername
           onSubmit={handleSetUsername}
           onSkip={() => setScreen(S.HOME)}
           checkUsernameAvailable={checkUsernameAvailable}
         />
       );
+      break;
 
     case S.HOME:
-      return (
+      currentScreen = (
         <>
           <Home
             profile={profile}
@@ -302,12 +315,14 @@ export default function App() {
           <FAQModal isOpen={showFAQ} onClose={() => setShowFAQ(false)} />
         </>
       );
+      break;
 
     case S.STARTING:
-      return <Starting />;
+      currentScreen = <Starting />;
+      break;
 
     case S.PLAYING:
-      return (
+      currentScreen = (
         <Playing
           canvasRef={canvasRef}
           nextIdx={nextIdx}
@@ -344,12 +359,14 @@ export default function App() {
           gameOver={gameOver}
         />
       );
+      break;
 
     case S.SUBMITTING:
-      return <Submitting score={finalScore} />;
+      currentScreen = <Submitting score={finalScore} />;
+      break;
 
     case S.RESULT:
-      return (
+      currentScreen = (
         <Result
           score={finalScore}
           personalBest={profile?.personalBest ?? 0}
@@ -360,8 +377,23 @@ export default function App() {
           onPlayAgain={() => setScreen(S.HOME)}
         />
       );
+      break;
 
     default:
-      return null;
+      currentScreen = null;
   }
+
+  return (
+    <>
+      {currentScreen}
+      {showGasModal && (
+        <LowGasModal
+          address={address}
+          balanceDisplay={balanceDisplay}
+          checking={gasChecking}
+          onRecheck={recheckNow}
+        />
+      )}
+    </>
+  );
 }
