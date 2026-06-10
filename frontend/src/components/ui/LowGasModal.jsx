@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const TELEGRAM_URL = 'https://t.me/c/tweetlegg/1137';
+const TELEGRAM_URL = 'https://t.me/+BAnzMviv8_5mZjI0';
 
 function CopyIcon({ copied }) {
   return copied ? (
