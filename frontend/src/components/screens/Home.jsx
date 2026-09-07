@@ -120,7 +120,8 @@ function PlayButton({ label, onClick, theme }) {
 
 export default function Home({
   profile, address: walletAddress, isMiniPay, leaderboard = [], leaderboardLoading,
-  onOpenModes, onOpenLegal, onOpenFAQ, onOpenSettings, onOpenProfile, onOpenCodex,
+  onOpenModes, onOpenLegal, onOpenFAQ, onOpenNews, newsUnread = 0,
+  onOpenSettings, onOpenProfile, onOpenCodex,
   onOpenLeaderboard, hasPausedGame, pausedScore, pausedRemaining, onContinueGame,
   progress, challenges, challengesDone, streakBroken, ladder, unclaimedRewards = 0,
   onOpenLadder,
@@ -159,6 +160,7 @@ export default function Home({
   const legalLinks = [
     { key: 'terms',   label: 'Terms',   action: () => onOpenLegal?.('terms')   },
     { key: 'privacy', label: 'Privacy', action: () => onOpenLegal?.('privacy') },
+    { key: 'news',    label: "What's new", action: () => onOpenNews?.(), dot: newsUnread > 0 },
     { key: 'faq',     label: 'FAQ',     action: () => onOpenFAQ?.()            },
     { key: 'about',   label: 'About',   action: () => onOpenLegal?.('about')   },
     // Owner-only. Server-enforced — this just saves typing #admin.
@@ -435,19 +437,28 @@ export default function Home({
               >
                 <XLogoIcon size={11} color={DIM} />
               </button>
-              {legalLinks.map(({ key, label, action }, i) => (
+              {legalLinks.map(({ key, label, action, dot }, i) => (
                 <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   {i > 0 && <span style={{ color: 'rgba(233,224,246,0.16)' }}>·</span>}
                   <button
                     onClick={action}
                     style={{
-                      background: 'none', border: 'none', padding: '2px 1px',
+                      position: 'relative', background: 'none', border: 'none', padding: '2px 1px',
                       fontFamily: 'inherit', fontSize: 'inherit',
-                      fontWeight: key === 'admin' ? 800 : 600,
-                      color: key === 'admin' ? GOLD : 'rgba(233,224,246,0.26)',
+                      fontWeight: key === 'admin' || dot ? 800 : 600,
+                      color: key === 'admin' ? GOLD : dot ? 'rgba(233,224,246,0.62)' : 'rgba(233,224,246,0.26)',
                     }}
                   >
                     {label}
+                    {/* Unread marker. A dot, not a count — the footer is a
+                        quiet row and a badge here would shout. */}
+                    {dot && (
+                      <span className="nk-motion" style={{
+                        position: 'absolute', top: 0, right: -4,
+                        width: 4, height: 4, borderRadius: '50%', background: GOLD,
+                        animation: 'nk-flicker 2.6s ease-in-out infinite',
+                      }} />
+                    )}
                   </button>
                 </span>
               ))}

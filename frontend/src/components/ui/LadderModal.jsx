@@ -401,14 +401,6 @@ function RewardsView({ rewards }) {
 
   return (
     <div style={{ padding: '14px 20px 4px' }}>
-      {/* Same component as the standings board, smaller variant — the natural
-          place to look once a player is already staring at the rungs. */}
-      <LadderStandings
-        compact
-        distribution={standings?.distribution}
-        players={standings?.players}
-        myLevel={myLevel}
-      />
       <div style={{
         fontFamily: '"Nunito", system-ui', fontSize: 10.5, color: 'rgba(255,255,255,0.45)',
         lineHeight: 1.6, marginBottom: 14,

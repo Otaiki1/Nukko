@@ -16,6 +16,7 @@ import { isUserRejection } from './utils/miniPay.js';
 import { useToast }       from './components/ui/Toast.jsx';
 import { useAudio }       from './hooks/useAudio.js';
 import { useProgress }    from './hooks/useProgress.js';
+import { useAnnouncements } from './hooks/useAnnouncements.js';
 import { useTheme }       from './theme/ThemeContext.jsx';
 import { getOrCreatePlayer, saveGameSession, addLeaderboardEntry, updatePlayerUsername } from './supabase/db.js';
 
@@ -38,9 +39,11 @@ import LegalModal    from './components/ui/LegalModal.jsx';
 import FAQModal      from './components/ui/FAQModal.jsx';
 import LadderModal   from './components/ui/LadderModal.jsx';
 import LevelUpModal  from './components/ui/LevelUpModal.jsx';
+import RankUpModal   from './components/ui/RankUpModal.jsx';
 import ClaimConfirmModal from './components/ui/ClaimConfirmModal.jsx';
 import Admin         from './components/screens/Admin.jsx';
 import FollowXModal  from './components/ui/FollowXModal.jsx';
+import AnnouncementModal, { NewsSheet } from './components/ui/AnnouncementModal.jsx';
 import {
   recordGameFinished,
   shouldShowFollowPrompt,
@@ -77,6 +80,11 @@ export default function App() {
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [resultRank,  setResultRank]  = useState(null);
   const [runSummary,  setRunSummary]  = useState(null); // XP / discoveries / challenges
+  const runSummaryRef = useRef(null);
+  // The rank-up announcement for the run just finished. Held separately from
+  // runSummary because the Result screen keeps rendering its summary after the
+  // modal has been dismissed.
+  const [rankUp, setRankUp] = useState(null);
   const [shop,          setShop]          = useState(null); // 'bomb' | 'expand' | null
   const [sessionStatus, setSessionStatus] = useState('idle'); // 'idle'|'pending'|'confirmed'|'failed'
   const [showTutorial,  setShowTutorial]  = useState(false);
@@ -210,6 +218,32 @@ export default function App() {
   const standings  = useLadderStandings();
   const rewardsApi = useRewards(address);
 
+  // News. Only allowed to interrupt on a settled home screen: never over the
+  // tutorial, the splash, or a run — and never over either celebration, both
+  // of which belong to the run just played and have earned the right to be
+  // read first. This modal outranks the rank-up on z-index, so the gate is
+  // what keeps them in the right order, not the stacking.
+  const news = useAnnouncements({
+    address,
+    ladder: ladderApi.ladder,
+    objectiveMeta: ladderApi.objectiveMeta,
+    ready: screen === S.HOME && splashDone && !showTutorial
+           && !ladderApi.celebrate?.length && !rankUp,
+  });
+
+  // Two ways into the ladder from the news, and they must not share a
+  // handler: acting on ONE bulletin reads only that bulletin, while leaving
+  // the archive reads everything that was queued.
+  const openLadderFromBulletin = useCallback(() => {
+    news.dismissCurrent();
+    setShowLadder(true);
+  }, [news]);
+
+  const openLadderFromArchive = useCallback(() => {
+    news.closeArchive();
+    setShowLadder(true);
+  }, [news]);
+
   // ── Admin route (hash based — the app has no router) ───────────────────────
 
   useEffect(() => {
@@ -331,7 +365,9 @@ export default function App() {
 
     // Settle local progression immediately — it's localStorage-only, so it must
     // not wait on (or be lost to) a failed chain submit.
-    setRunSummary(finishRun({ score: submitted, ...getRunStats() }));
+    const summary = finishRun({ score: submitted, ...getRunStats() });
+    setRunSummary(summary);
+    runSummaryRef.current = summary;
 
     (async () => {
       // Save session + leaderboard entry to Supabase first (non-blocking) so
@@ -387,8 +423,23 @@ export default function App() {
   // Occasional "follow us on X" prompt — shows on the result screen after the
   // score animation settles. All frequency gating lives in utils/social.js.
   useEffect(() => {
-    if (screen !== S.RESULT) return;
+    if (screen !== S.RESULT) {
+      // Leaving the result screen retires the announcement with the run that
+      // earned it — it must never reappear over the next game's result.
+      setRankUp(null);
+      return;
+    }
     recordGameFinished();
+
+    const summary = runSummaryRef.current;
+    if (summary?.leveledUp) {
+      setRankUp(summary);
+      // Two prompts stacked on one result is one too many, and the rank-up is
+      // the one this run earned. shouldShowFollowPrompt is left unmarked, so
+      // the follow prompt simply comes back around on a later run.
+      return;
+    }
+
     if (!shouldShowFollowPrompt()) return;
     const timer = setTimeout(() => {
       markFollowPromptShown();
@@ -580,6 +631,8 @@ export default function App() {
             onContinueGame={handleContinueGame}
             onOpenLegal={setLegalModal}
             onOpenFAQ={() => setShowFAQ(true)}
+            onOpenNews={news.openArchive}
+            newsUnread={news.unreadCount}
             ladder={ladderApi.ladder}
             unclaimedRewards={rewardsApi.unclaimedCount}
             onOpenLadder={() => setShowLadder(true)}
@@ -783,6 +836,14 @@ export default function App() {
         onRetry={() => ladderApi.sync({ fresh: true })}
       />
 
+      {/* The local rank track. Scoped to the result screen: it belongs to the
+          run that earned it, unlike the ladder celebration below. */}
+      <RankUpModal
+        summary={rankUp}
+        onClose={() => setRankUp(null)}
+        onOpenLadder={address ? () => { setRankUp(null); setShowLadder(true); } : undefined}
+      />
+
       {/* Celebration — only fires for levels that actually paid out */}
       <LevelUpModal
         levels={ladderApi.celebrate}
@@ -795,6 +856,22 @@ export default function App() {
         onConfirm={rewardsApi.confirm}
         onReopen={rewardsApi.reopenPending}
         onDismiss={rewardsApi.dismissPending}
+      />
+
+      {/* News. Sits under the level-up celebration (z 300) on purpose: a
+          player who just cleared a rung reads what they earned first, then
+          the bulletin for the rung they landed on. */}
+      <AnnouncementModal
+        entry={news.current}
+        remaining={Math.max(0, news.queue.length - 1)}
+        onDismiss={news.dismissCurrent}
+        onAction={openLadderFromBulletin}
+      />
+      <NewsSheet
+        isOpen={news.archiveOpen}
+        entries={news.entries}
+        onClose={news.closeArchive}
+        onAction={openLadderFromArchive}
       />
 
       {showFollowPrompt && (

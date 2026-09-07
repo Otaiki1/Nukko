@@ -32,7 +32,7 @@ export function levelProgress(xp) {
   };
 }
 
-const TITLES = [
+export const TITLES = [
   { level: 1,  title: 'Dust Drifter' },
   { level: 3,  title: 'Pebble Hauler' },
   { level: 6,  title: 'Comet Chaser' },
@@ -50,6 +50,22 @@ export function titleForLevel(level) {
   let out = TITLES[0].title;
   for (const t of TITLES) if (level >= t.level) out = t.title;
   return out;
+}
+
+/**
+ * The next title above `level`, or null once the table is exhausted.
+ *
+ * Rank grants nothing playable on purpose, so the only thing it can offer a
+ * player is the next name — which means the modal announcing a rank has to be
+ * able to name it.
+ */
+export function nextTitleAfter(level) {
+  return TITLES.find(t => t.level > level) ?? null;
+}
+
+/** True when climbing from `before` to `after` crosses a title threshold. */
+export function titleUnlocked(before, after) {
+  return titleForLevel(after) !== titleForLevel(before);
 }
 
 /** XP earned from a finished run. */

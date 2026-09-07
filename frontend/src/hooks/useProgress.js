@@ -142,6 +142,10 @@ export function useProgress(address) {
       challengesCompleted: newlyDone,
       leveledUp: levelAfter > levelBefore,
       newLevel: levelAfter,
+      // The rank BEFORE the run, so the announcement can tell a plain rank-up
+      // apart from one that also crosses a title threshold.
+      prevLevel: levelBefore,
+      xpAfter: prev.xp + gainedXp,
     };
   }, [challenges]);
 
